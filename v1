@@ -1,0 +1,40 @@
+//@version=6
+indicator("Pivot High Low (6,6)", overlay = true)
+
+// =====================
+// 設定
+// =====================
+leftBars  = 6
+rightBars = 6
+
+// =====================
+// ピボット検出
+// =====================
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow  = ta.pivotlow(low, leftBars, rightBars)
+
+// =====================
+// 表示
+// =====================
+
+// ピボット高値
+plotshape(
+     not na(pivotHigh),
+     title     = "Pivot High",
+     style     = shape.triangledown,
+     location  = location.abovebar,
+     color     = color.red,
+     size      = size.small,
+     offset    = -rightBars
+)
+
+// ピボット安値
+plotshape(
+     not na(pivotLow),
+     title     = "Pivot Low",
+     style     = shape.triangleup,
+     location  = location.belowbar,
+     color     = color.lime,
+     size      = size.small,
+     offset    = -rightBars
+)
