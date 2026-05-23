@@ -1,0 +1,67 @@
+//@version=6
+indicator("Pivot High Low Alternating (6,6)", overlay = true, max_labels_count = 500)
+
+// =====================
+// 設定
+// =====================
+leftBars = 6
+rightBars = 6
+
+// =====================
+// ピボット検出
+// =====================
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow = ta.pivotlow(low, leftBars, rightBars)
+
+isPivotHigh = not na(pivotHigh)
+isPivotLow = not na(pivotLow)
+
+// =====================
+// 状態管理
+// lastType:  1 = 高値
+//           -1 = 安値
+//            0 = なし
+// =====================
+var int lastType = 0
+var float lastPrice = na
+var int lastBar = na
+var label lastLabel = na
+
+// =====================
+// ピボット確定位置
+// =====================
+pivotBar = bar_index - rightBars
+
+// =====================
+// 高値ピボット処理
+// =====================
+if isPivotHigh
+    if lastType == 1
+        if pivotHigh > lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+            lastPrice := pivotHigh
+            lastBar := pivotBar
+            lastLabel := label.new(lastBar, lastPrice, "H", style = label.style_label_down, textcolor = color.white, color = color.red, size = size.small)
+    else
+        lastType := 1
+        lastPrice := pivotHigh
+        lastBar := pivotBar
+        lastLabel := label.new(lastBar, lastPrice, "H", style = label.style_label_down, textcolor = color.white, color = color.red, size = size.small)
+
+// =====================
+// 安値ピボット処理
+// =====================
+if isPivotLow
+    if lastType == -1
+        if pivotLow < lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+            lastPrice := pivotLow
+            lastBar := pivotBar
+            lastLabel := label.new(lastBar, lastPrice, "L", style = label.style_label_up, textcolor = color.white, color = color.lime, size = size.small)
+    else
+        lastType := -1
+        lastPrice := pivotLow
+        lastBar := pivotBar
+        lastLabel := label.new(lastBar, lastPrice, "L", style = label.style_label_up, textcolor = color.white, color = color.lime, size = size.small)
