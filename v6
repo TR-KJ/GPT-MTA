@@ -1,0 +1,132 @@
+//@version=6
+indicator("MTA v6 - MTA Lines + Paired High Low", overlay = true, max_labels_count = 500, max_lines_count = 100)
+
+leftBars = 6
+rightBars = 6
+
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow = ta.pivotlow(low, leftBars, rightBars)
+
+isPivotHigh = not na(pivotHigh)
+isPivotLow = not na(pivotLow)
+
+pivotBar = bar_index - rightBars
+
+bodyHighBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyHigh = math.max(open[i], close[i])
+        if bodyHigh > targetPrice
+            result := true
+    result
+
+bodyLowBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyLow = math.min(open[i], close[i])
+        if bodyLow < targetPrice
+            result := true
+    result
+
+var int lastType = 0
+var float lastPrice = na
+var int lastBar = na
+var label lastLabel = na
+
+var float prevHighPrice = na
+var float prevLowPrice = na
+
+var float lastHighPrice = na
+var int lastHighBar = na
+var float lastLowPrice = na
+var int lastLowBar = na
+
+var float currentHighRef = na
+var float currentLowRef = na
+
+var line pushLowMtaLine = na
+var line pushLowPairHighLine = na
+var line returnHighMtaLine = na
+var line returnHighPairLowLine = na
+
+if isPivotHigh
+    if lastType == 1
+        if pivotHigh > lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+            isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef)
+            labelText = isHH ? "HH" : "H"
+            labelColor = isHH ? color.orange : color.red
+            lastPrice := pivotHigh
+            lastBar := pivotBar
+            lastLabel := label.new(lastBar, lastPrice, labelText, style = label.style_label_down, textcolor = color.white, color = labelColor, size = size.small)
+            if isHH and not na(lastLowPrice)
+                if not na(pushLowMtaLine)
+                    line.delete(pushLowMtaLine)
+                if not na(pushLowPairHighLine)
+                    line.delete(pushLowPairHighLine)
+                pushLowMtaLine := line.new(lastLowBar, lastLowPrice, bar_index, lastLowPrice, extend = extend.right, color = color.lime, width = 2)
+                pushLowPairHighLine := line.new(lastBar, lastPrice, bar_index, lastPrice, extend = extend.right, color = color.orange, width = 2)
+            prevHighPrice := pivotHigh
+            lastHighPrice := pivotHigh
+            lastHighBar := pivotBar
+    else
+        currentHighRef := prevHighPrice
+        isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef)
+        labelText = isHH ? "HH" : "H"
+        labelColor = isHH ? color.orange : color.red
+        lastType := 1
+        lastPrice := pivotHigh
+        lastBar := pivotBar
+        lastLabel := label.new(lastBar, lastPrice, labelText, style = label.style_label_down, textcolor = color.white, color = labelColor, size = size.small)
+        if isHH and not na(lastLowPrice)
+            if not na(pushLowMtaLine)
+                line.delete(pushLowMtaLine)
+            if not na(pushLowPairHighLine)
+                line.delete(pushLowPairHighLine)
+            pushLowMtaLine := line.new(lastLowBar, lastLowPrice, bar_index, lastLowPrice, extend = extend.right, color = color.lime, width = 2)
+            pushLowPairHighLine := line.new(lastBar, lastPrice, bar_index, lastPrice, extend = extend.right, color = color.orange, width = 2)
+        prevHighPrice := pivotHigh
+        lastHighPrice := pivotHigh
+        lastHighBar := pivotBar
+
+if isPivotLow
+    if lastType == -1
+        if pivotLow < lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+            isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef)
+            labelText = isLL ? "LL" : "L"
+            labelColor = isLL ? color.blue : color.lime
+            lastPrice := pivotLow
+            lastBar := pivotBar
+            lastLabel := label.new(lastBar, lastPrice, labelText, style = label.style_label_up, textcolor = color.white, color = labelColor, size = size.small)
+            if isLL and not na(lastHighPrice)
+                if not na(returnHighMtaLine)
+                    line.delete(returnHighMtaLine)
+                if not na(returnHighPairLowLine)
+                    line.delete(returnHighPairLowLine)
+                returnHighMtaLine := line.new(lastHighBar, lastHighPrice, bar_index, lastHighPrice, extend = extend.right, color = color.aqua, width = 2)
+                returnHighPairLowLine := line.new(lastBar, lastPrice, bar_index, lastPrice, extend = extend.right, color = color.red, width = 2)
+            prevLowPrice := pivotLow
+            lastLowPrice := pivotLow
+            lastLowBar := pivotBar
+    else
+        currentLowRef := prevLowPrice
+        isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef)
+        labelText = isLL ? "LL" : "L"
+        labelColor = isLL ? color.blue : color.lime
+        lastType := -1
+        lastPrice := pivotLow
+        lastBar := pivotBar
+        lastLabel := label.new(lastBar, lastPrice, labelText, style = label.style_label_up, textcolor = color.white, color = labelColor, size = size.small)
+        if isLL and not na(lastHighPrice)
+            if not na(returnHighMtaLine)
+                line.delete(returnHighMtaLine)
+            if not na(returnHighPairLowLine)
+                line.delete(returnHighPairLowLine)
+            returnHighMtaLine := line.new(lastHighBar, lastHighPrice, bar_index, lastHighPrice, extend = extend.right, color = color.aqua, width = 2)
+            returnHighPairLowLine := line.new(lastBar, lastPrice, bar_index, lastPrice, extend = extend.right, color = color.red, width = 2)
+        prevLowPrice := pivotLow
+        lastLowPrice := pivotLow
+        lastLowBar := pivotBar
