@@ -1,0 +1,43 @@
+//@version=5
+indicator("v7.6.3 MTA修正版", overlay=true)
+
+// --- ピボット検出 ---
+pivotHigh = ta.pivothigh(high, 3, 3)
+pivotLow  = ta.pivotlow(low, 3, 3)
+
+// --- トレンドステート: 1=上昇, -1=下降, 0=なし ---
+var int trendState = 0
+
+// --- MTAライン価格変数 ---
+var float pushHighMtaPrice = na
+var float pushLowMtaPrice  = na
+var float pushHighPairLowPrice = na
+var float pushLowPairHighPrice = na
+
+// --- 上昇トレンド処理 ---
+if not na(pivotHigh)
+    if trendState == 0
+        trendState := 1
+        pushLowMtaPrice := low[pivotHigh]
+        pushLowPairHighPrice := pivotHigh
+    else if trendState == 1
+        // 上昇中はHHでMTA作り直さず、実体で更新した時のみ
+        if close > pushHighMtaPrice
+            pushHighMtaPrice := close
+            pushLowMtaPrice  := low[pivotHigh]  // 直前Lに押し安値を更新
+
+// --- 下降トレンド処理 ---
+if not na(pivotLow)
+    if trendState == 0
+        trendState := -1
+        pushHighMtaPrice := high[pivotLow]
+        pushHighPairLowPrice := pivotLow
+    else if trendState == -1
+        // 下降中はLLでMTA作り直さず、実体で更新した時のみ
+        if close < pushLowMtaPrice
+            pushLowMtaPrice  := close
+            pushHighMtaPrice := high[pivotLow]  // 直前Hに戻り高値を更新
+
+// --- 描画 ---
+plot(pushHighMtaPrice, color=color.white, linewidth=2, title="MTA対応高値")
+plot(pushLowMtaPrice,  color=color.white, linewidth=2, title="MTA対応安値")
