@@ -1,0 +1,161 @@
+//@version=6
+indicator("MTA v8.2α-2 - 1m Trigger After Setup Time", overlay = true, max_labels_count = 500)
+
+leftBars = input.int(6, "左ピボット本数", minval = 1)
+rightBars = input.int(6, "右ピボット本数", minval = 1)
+
+setupMode = input.string("Off", "Setup方向", options = ["Off", "Long", "Short"])
+setupStartTime = input.time(timestamp("2025-01-01T00:00:00"), "Setup開始時刻")
+
+showPivotLabels = input.bool(true, "H/L・HH/LLラベルを表示")
+showTriggerLabels = input.bool(true, "Triggerラベルを表示")
+useTriggerAlerts = input.bool(true, "Triggerアラートを有効化")
+
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow = ta.pivotlow(low, leftBars, rightBars)
+
+isPivotHigh = not na(pivotHigh)
+isPivotLow = not na(pivotLow)
+
+pivotBar = bar_index - rightBars
+pivotTime = time[rightBars]
+
+bodyHighBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyHigh = math.max(open[i], close[i])
+        if bodyHigh > targetPrice
+            result := true
+    result
+
+bodyLowBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyLow = math.min(open[i], close[i])
+        if bodyLow < targetPrice
+            result := true
+    result
+
+var int lastType = 0
+var float lastPrice = na
+var int lastBar = na
+var label lastLabel = na
+
+var float prevHighPrice = na
+var float prevLowPrice = na
+
+var bool longTriggerFired = false
+var bool shortTriggerFired = false
+
+var string prevSetupMode = "Off"
+var int prevSetupStartTime = na
+
+if setupMode != prevSetupMode
+    longTriggerFired := false
+    shortTriggerFired := false
+    prevSetupMode := setupMode
+
+if setupStartTime != prevSetupStartTime
+    longTriggerFired := false
+    shortTriggerFired := false
+    prevSetupStartTime := setupStartTime
+
+if setupMode == "Off"
+    longTriggerFired := false
+    shortTriggerFired := false
+
+longTrigger = false
+shortTrigger = false
+
+isAfterSetupTime = pivotTime >= setupStartTime
+
+if isPivotHigh
+    if lastType == 1
+        if pivotHigh > lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+
+            bool isHH = not na(prevHighPrice) and bodyHighBreak(prevHighPrice)
+
+            string labelText = isHH ? "HH" : "H"
+            color labelColor = isHH ? color.orange : color.red
+
+            lastPrice := pivotHigh
+            lastBar := pivotBar
+
+            lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_down, textcolor = color.white, color = labelColor, size = size.small) : na
+
+            if setupMode == "Long" and isAfterSetupTime and isHH and not longTriggerFired
+                longTrigger := true
+                longTriggerFired := true
+                if showTriggerLabels
+                    label.new(lastBar, lastPrice, "Long Trigger", style = label.style_label_down, textcolor = color.white, color = color.green, size = size.normal)
+
+            prevHighPrice := pivotHigh
+
+    else
+        bool isHH = not na(prevHighPrice) and bodyHighBreak(prevHighPrice)
+
+        string labelText = isHH ? "HH" : "H"
+        color labelColor = isHH ? color.orange : color.red
+
+        lastType := 1
+        lastPrice := pivotHigh
+        lastBar := pivotBar
+
+        lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_down, textcolor = color.white, color = labelColor, size = size.small) : na
+
+        if setupMode == "Long" and isAfterSetupTime and isHH and not longTriggerFired
+            longTrigger := true
+            longTriggerFired := true
+            if showTriggerLabels
+                label.new(lastBar, lastPrice, "Long Trigger", style = label.style_label_down, textcolor = color.white, color = color.green, size = size.normal)
+
+        prevHighPrice := pivotHigh
+
+if isPivotLow
+    if lastType == -1
+        if pivotLow < lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+
+            bool isLL = not na(prevLowPrice) and bodyLowBreak(prevLowPrice)
+
+            string labelText = isLL ? "LL" : "L"
+            color labelColor = isLL ? color.blue : color.lime
+
+            lastPrice := pivotLow
+            lastBar := pivotBar
+
+            lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_up, textcolor = color.white, color = labelColor, size = size.small) : na
+
+            if setupMode == "Short" and isAfterSetupTime and isLL and not shortTriggerFired
+                shortTrigger := true
+                shortTriggerFired := true
+                if showTriggerLabels
+                    label.new(lastBar, lastPrice, "Short Trigger", style = label.style_label_up, textcolor = color.white, color = color.red, size = size.normal)
+
+            prevLowPrice := pivotLow
+
+    else
+        bool isLL = not na(prevLowPrice) and bodyLowBreak(prevLowPrice)
+
+        string labelText = isLL ? "LL" : "L"
+        color labelColor = isLL ? color.blue : color.lime
+
+        lastType := -1
+        lastPrice := pivotLow
+        lastBar := pivotBar
+
+        lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_up, textcolor = color.white, color = labelColor, size = size.small) : na
+
+        if setupMode == "Short" and isAfterSetupTime and isLL and not shortTriggerFired
+            shortTrigger := true
+            shortTriggerFired := true
+            if showTriggerLabels
+                label.new(lastBar, lastPrice, "Short Trigger", style = label.style_label_up, textcolor = color.white, color = color.red, size = size.normal)
+
+        prevLowPrice := pivotLow
+
+alertcondition(useTriggerAlerts and longTrigger, title = "Long Trigger", message = "Setup開始時刻以降、1分足でLong Triggerが発生しました")
+alertcondition(useTriggerAlerts and shortTrigger, title = "Short Trigger", message = "Setup開始時刻以降、1分足でShort Triggerが発生しました")
