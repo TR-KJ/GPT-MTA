@@ -1,0 +1,336 @@
+//@version=6
+indicator("MTA v8.1α-A-3 - 15m MTA Setup + 1m Trigger", overlay = true, max_labels_count = 500, max_lines_count = 100)
+
+htfTf = input.timeframe("15", "上位足MTA時間足")
+leftBars = input.int(6, "15分MTA 左ピボット本数", minval = 1)
+rightBars = input.int(6, "15分MTA 右ピボット本数", minval = 1)
+
+triggerLeftBars = input.int(6, "1分Trigger 左ピボット本数", minval = 1)
+triggerRightBars = input.int(6, "1分Trigger 右ピボット本数", minval = 1)
+
+showHtfZones = input.bool(true, "15分MTAゾーンを表示")
+showHtfPairLines = input.bool(true, "15分MTA対応高値安値を表示")
+showSetupLabels = input.bool(true, "Setupラベルを表示")
+showTriggerLabels = input.bool(true, "Triggerラベルを表示")
+showTriggerPivots = input.bool(true, "1分H/L・HH/LLラベルを表示")
+
+useSetupAlerts = input.bool(true, "Setupアラートを有効化")
+useTriggerAlerts = input.bool(true, "Triggerアラートを有効化")
+
+bodyHighBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyHigh = math.max(open[i], close[i])
+        if bodyHigh > targetPrice
+            result := true
+    result
+
+bodyLowBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyLow = math.min(open[i], close[i])
+        if bodyLow < targetPrice
+            result := true
+    result
+
+mtaBodyHighMax(mtaBar) =>
+    float result = na
+    int barsBack = bar_index - mtaBar
+    for i = 0 to barsBack
+        bodyHigh = math.max(open[i], close[i])
+        result := na(result) ? bodyHigh : math.max(result, bodyHigh)
+    result
+
+mtaBodyLowMin(mtaBar) =>
+    float result = na
+    int barsBack = bar_index - mtaBar
+    for i = 0 to barsBack
+        bodyLow = math.min(open[i], close[i])
+        result := na(result) ? bodyLow : math.min(result, bodyLow)
+    result
+
+calcHtfMta() =>
+    pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+    pivotLow = ta.pivotlow(low, leftBars, rightBars)
+
+    isPivotHigh = not na(pivotHigh)
+    isPivotLow = not na(pivotLow)
+
+    pivotBar = bar_index - rightBars
+
+    confirmedBodyHigh = math.max(open[1], close[1])
+    confirmedBodyLow = math.min(open[1], close[1])
+    confirmedHigh = high[1]
+    confirmedLow = low[1]
+
+    var int lastType = 0
+    var float lastPrice = na
+    var float prevHighPrice = na
+    var float prevLowPrice = na
+
+    var float lastHighWickPrice = na
+    var int lastHighBar = na
+
+    var float lastLowWickPrice = na
+    var int lastLowBar = na
+
+    var float currentHighRef = na
+    var float currentLowRef = na
+
+    var int trendState = 0
+
+    var float pushLowMtaPrice = na
+    var float returnHighMtaPrice = na
+
+    var float pushLowPairHighPrice = na
+    var float returnHighPairLowPrice = na
+
+    var float bullZoneTop = na
+    var float bullZoneBottom = na
+    var float bearZoneTop = na
+    var float bearZoneBottom = na
+
+    if trendState == 1 and not na(pushLowPairHighPrice) and confirmedBodyHigh > pushLowPairHighPrice and confirmedHigh > pushLowPairHighPrice
+        pushLowPairHighPrice := confirmedHigh
+        if not na(lastLowWickPrice)
+            pushLowMtaPrice := lastLowWickPrice
+            float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+            bullZoneTop := zoneBodyLow
+            bullZoneBottom := lastLowWickPrice
+
+    if trendState == -1 and not na(returnHighPairLowPrice) and confirmedBodyLow < returnHighPairLowPrice and confirmedLow < returnHighPairLowPrice
+        returnHighPairLowPrice := confirmedLow
+        if not na(lastHighWickPrice)
+            returnHighMtaPrice := lastHighWickPrice
+            float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+            bearZoneTop := lastHighWickPrice
+            bearZoneBottom := zoneBodyHigh
+
+    if trendState == -1 and not na(returnHighMtaPrice) and close > returnHighMtaPrice
+        trendState := 1
+        returnHighMtaPrice := na
+        returnHighPairLowPrice := na
+        bearZoneTop := na
+        bearZoneBottom := na
+
+    if trendState == 1 and not na(pushLowMtaPrice) and close < pushLowMtaPrice
+        trendState := -1
+        pushLowMtaPrice := na
+        pushLowPairHighPrice := na
+        bullZoneTop := na
+        bullZoneBottom := na
+
+    if isPivotHigh
+        if lastType == 1
+            if pivotHigh > lastPrice
+                bool isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef)
+                lastPrice := pivotHigh
+                if isHH and trendState != -1 and na(pushLowMtaPrice) and not na(lastLowWickPrice)
+                    trendState := 1
+                    pushLowMtaPrice := lastLowWickPrice
+                    pushLowPairHighPrice := pivotHigh
+                    float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+                    bullZoneTop := zoneBodyLow
+                    bullZoneBottom := lastLowWickPrice
+                prevHighPrice := pivotHigh
+                lastHighWickPrice := pivotHigh
+                lastHighBar := pivotBar
+        else
+            currentHighRef := prevHighPrice
+            bool isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef)
+            lastType := 1
+            lastPrice := pivotHigh
+            if isHH and trendState != -1 and na(pushLowMtaPrice) and not na(lastLowWickPrice)
+                trendState := 1
+                pushLowMtaPrice := lastLowWickPrice
+                pushLowPairHighPrice := pivotHigh
+                float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+                bullZoneTop := zoneBodyLow
+                bullZoneBottom := lastLowWickPrice
+            prevHighPrice := pivotHigh
+            lastHighWickPrice := pivotHigh
+            lastHighBar := pivotBar
+
+    if isPivotLow
+        if lastType == -1
+            if pivotLow < lastPrice
+                bool isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef)
+                lastPrice := pivotLow
+                if isLL and trendState != 1 and na(returnHighMtaPrice) and not na(lastHighWickPrice)
+                    trendState := -1
+                    returnHighMtaPrice := lastHighWickPrice
+                    returnHighPairLowPrice := pivotLow
+                    float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+                    bearZoneTop := lastHighWickPrice
+                    bearZoneBottom := zoneBodyHigh
+                prevLowPrice := pivotLow
+                lastLowWickPrice := pivotLow
+                lastLowBar := pivotBar
+        else
+            currentLowRef := prevLowPrice
+            bool isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef)
+            lastType := -1
+            lastPrice := pivotLow
+            if isLL and trendState != 1 and na(returnHighMtaPrice) and not na(lastHighWickPrice)
+                trendState := -1
+                returnHighMtaPrice := lastHighWickPrice
+                returnHighPairLowPrice := pivotLow
+                float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+                bearZoneTop := lastHighWickPrice
+                bearZoneBottom := zoneBodyHigh
+            prevLowPrice := pivotLow
+            lastLowWickPrice := pivotLow
+            lastLowBar := pivotBar
+
+    [trendState, bullZoneTop, bullZoneBottom, bearZoneTop, bearZoneBottom, pushLowPairHighPrice, returnHighPairLowPrice]
+
+[htfTrendState, htfBullZoneTop, htfBullZoneBottom, htfBearZoneTop, htfBearZoneBottom, htfBullPairHigh, htfBearPairLow] = request.security(syminfo.tickerid, htfTf, calcHtfMta(), lookahead = barmerge.lookahead_off)
+
+bullTopPlot = plot(showHtfZones and htfTrendState == 1 ? htfBullZoneTop : na, title = "15m 押し安値MTAゾーン上限", color = color.lime, linewidth = 1, style = plot.style_linebr)
+bullBottomPlot = plot(showHtfZones and htfTrendState == 1 ? htfBullZoneBottom : na, title = "15m 押し安値MTAゾーン下限", color = color.lime, linewidth = 1, style = plot.style_linebr)
+
+bearTopPlot = plot(showHtfZones and htfTrendState == -1 ? htfBearZoneTop : na, title = "15m 戻り高値MTAゾーン上限", color = color.aqua, linewidth = 1, style = plot.style_linebr)
+bearBottomPlot = plot(showHtfZones and htfTrendState == -1 ? htfBearZoneBottom : na, title = "15m 戻り高値MTAゾーン下限", color = color.aqua, linewidth = 1, style = plot.style_linebr)
+
+fill(bullTopPlot, bullBottomPlot, color = showHtfZones and htfTrendState == 1 ? color.new(color.lime, 85) : na)
+fill(bearTopPlot, bearBottomPlot, color = showHtfZones and htfTrendState == -1 ? color.new(color.aqua, 85) : na)
+
+plot(showHtfPairLines and htfTrendState == 1 ? htfBullPairHigh : na, title = "15m MTA対応高値", color = color.orange, linewidth = 2, style = plot.style_linebr)
+plot(showHtfPairLines and htfTrendState == -1 ? htfBearPairLow : na, title = "15m MTA対応安値", color = color.red, linewidth = 2, style = plot.style_linebr)
+
+bullZoneTouch = htfTrendState == 1 and not na(htfBullZoneTop) and not na(htfBullZoneBottom) and low <= htfBullZoneTop and high >= htfBullZoneBottom
+bearZoneTouch = htfTrendState == -1 and not na(htfBearZoneTop) and not na(htfBearZoneBottom) and high >= htfBearZoneBottom and low <= htfBearZoneTop
+
+bullZoneTouchOnce = bullZoneTouch and not bullZoneTouch[1]
+bearZoneTouchOnce = bearZoneTouch and not bearZoneTouch[1]
+
+var bool longSetupActive = false
+var bool shortSetupActive = false
+var bool longTriggerFired = false
+var bool shortTriggerFired = false
+var label setupLabel = na
+
+if bullZoneTouchOnce
+    longSetupActive := true
+    shortSetupActive := false
+    longTriggerFired := false
+    shortTriggerFired := false
+    if not na(setupLabel)
+        label.delete(setupLabel)
+    if showSetupLabels
+        setupLabel := label.new(bar_index, low, "Long Setup\n15m MTA接触", style = label.style_label_up, textcolor = color.white, color = color.green, size = size.small)
+
+if bearZoneTouchOnce
+    shortSetupActive := true
+    longSetupActive := false
+    longTriggerFired := false
+    shortTriggerFired := false
+    if not na(setupLabel)
+        label.delete(setupLabel)
+    if showSetupLabels
+        setupLabel := label.new(bar_index, high, "Short Setup\n15m MTA接触", style = label.style_label_down, textcolor = color.white, color = color.red, size = size.small)
+
+triggerPivotHigh = ta.pivothigh(high, triggerLeftBars, triggerRightBars)
+triggerPivotLow = ta.pivotlow(low, triggerLeftBars, triggerRightBars)
+
+isTriggerPivotHigh = not na(triggerPivotHigh)
+isTriggerPivotLow = not na(triggerPivotLow)
+
+triggerPivotBar = bar_index - triggerRightBars
+
+triggerBodyHighBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to triggerRightBars - 1
+        bodyHigh = math.max(open[i], close[i])
+        if bodyHigh > targetPrice
+            result := true
+    result
+
+triggerBodyLowBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to triggerRightBars - 1
+        bodyLow = math.min(open[i], close[i])
+        if bodyLow < targetPrice
+            result := true
+    result
+
+var int triggerLastType = 0
+var float triggerLastPrice = na
+var int triggerLastBar = na
+var label triggerLastLabel = na
+
+var float triggerPrevHighPrice = na
+var float triggerPrevLowPrice = na
+
+longTrigger = false
+shortTrigger = false
+
+if isTriggerPivotHigh
+    if triggerLastType == 1
+        if triggerPivotHigh > triggerLastPrice
+            if not na(triggerLastLabel)
+                label.delete(triggerLastLabel)
+            bool isTriggerHH = not na(triggerPrevHighPrice) and triggerBodyHighBreak(triggerPrevHighPrice)
+            string triggerLabelText = isTriggerHH ? "HH" : "H"
+            color triggerLabelColor = isTriggerHH ? color.orange : color.red
+            triggerLastPrice := triggerPivotHigh
+            triggerLastBar := triggerPivotBar
+            triggerLastLabel := showTriggerPivots ? label.new(triggerLastBar, triggerLastPrice, triggerLabelText, style = label.style_label_down, textcolor = color.white, color = triggerLabelColor, size = size.tiny) : na
+            if longSetupActive and isTriggerHH and not longTriggerFired
+                longTrigger := true
+                longTriggerFired := true
+                if showTriggerLabels
+                    label.new(triggerLastBar, triggerLastPrice, "Long Trigger", style = label.style_label_down, textcolor = color.white, color = color.green, size = size.normal)
+            triggerPrevHighPrice := triggerPivotHigh
+    else
+        bool isTriggerHH = not na(triggerPrevHighPrice) and triggerBodyHighBreak(triggerPrevHighPrice)
+        string triggerLabelText = isTriggerHH ? "HH" : "H"
+        color triggerLabelColor = isTriggerHH ? color.orange : color.red
+        triggerLastType := 1
+        triggerLastPrice := triggerPivotHigh
+        triggerLastBar := triggerPivotBar
+        triggerLastLabel := showTriggerPivots ? label.new(triggerLastBar, triggerLastPrice, triggerLabelText, style = label.style_label_down, textcolor = color.white, color = triggerLabelColor, size = size.tiny) : na
+        if longSetupActive and isTriggerHH and not longTriggerFired
+            longTrigger := true
+            longTriggerFired := true
+            if showTriggerLabels
+                label.new(triggerLastBar, triggerLastPrice, "Long Trigger", style = label.style_label_down, textcolor = color.white, color = color.green, size = size.normal)
+        triggerPrevHighPrice := triggerPivotHigh
+
+if isTriggerPivotLow
+    if triggerLastType == -1
+        if triggerPivotLow < triggerLastPrice
+            if not na(triggerLastLabel)
+                label.delete(triggerLastLabel)
+            bool isTriggerLL = not na(triggerPrevLowPrice) and triggerBodyLowBreak(triggerPrevLowPrice)
+            string triggerLabelText = isTriggerLL ? "LL" : "L"
+            color triggerLabelColor = isTriggerLL ? color.blue : color.lime
+            triggerLastPrice := triggerPivotLow
+            triggerLastBar := triggerPivotBar
+            triggerLastLabel := showTriggerPivots ? label.new(triggerLastBar, triggerLastPrice, triggerLabelText, style = label.style_label_up, textcolor = color.white, color = triggerLabelColor, size = size.tiny) : na
+            if shortSetupActive and isTriggerLL and not shortTriggerFired
+                shortTrigger := true
+                shortTriggerFired := true
+                if showTriggerLabels
+                    label.new(triggerLastBar, triggerLastPrice, "Short Trigger", style = label.style_label_up, textcolor = color.white, color = color.red, size = size.normal)
+            triggerPrevLowPrice := triggerPivotLow
+    else
+        bool isTriggerLL = not na(triggerPrevLowPrice) and triggerBodyLowBreak(triggerPrevLowPrice)
+        string triggerLabelText = isTriggerLL ? "LL" : "L"
+        color triggerLabelColor = isTriggerLL ? color.blue : color.lime
+        triggerLastType := -1
+        triggerLastPrice := triggerPivotLow
+        triggerLastBar := triggerPivotBar
+        triggerLastLabel := showTriggerPivots ? label.new(triggerLastBar, triggerLastPrice, triggerLabelText, style = label.style_label_up, textcolor = color.white, color = triggerLabelColor, size = size.tiny) : na
+        if shortSetupActive and isTriggerLL and not shortTriggerFired
+            shortTrigger := true
+            shortTriggerFired := true
+            if showTriggerLabels
+                label.new(triggerLastBar, triggerLastPrice, "Short Trigger", style = label.style_label_up, textcolor = color.white, color = color.red, size = size.normal)
+        triggerPrevLowPrice := triggerPivotLow
+
+alertcondition(useSetupAlerts and bullZoneTouchOnce, title = "Long Setup", message = "1分足価格が15分押し安値MTAゾーンに接触しました")
+alertcondition(useSetupAlerts and bearZoneTouchOnce, title = "Short Setup", message = "1分足価格が15分戻り高値MTAゾーンに接触しました")
+
+alertcondition(useTriggerAlerts and longTrigger, title = "Long Trigger", message = "15分Long Setup後、1分足でLong Triggerが発生しました")
+alertcondition(useTriggerAlerts and shortTrigger, title = "Short Trigger", message = "15分Short Setup後、1分足でShort Triggerが発生しました")
