@@ -1,5 +1,5 @@
 //@version=6
-indicator("MTA v8.1α-A-3 - 15m MTA Setup + 1m Trigger", overlay = true, max_labels_count = 500, max_lines_count = 100)
+indicator("MTA v8.1α-A-3 - 15m MTA Setup + 1m Trigger", overlay = true, max_labels_count = 500, max_lines_count = 100, max_bars_back = 5000)
 
 htfTf = input.timeframe("15", "上位足MTA時間足")
 leftBars = input.int(6, "15分MTA 左ピボット本数", minval = 1)
