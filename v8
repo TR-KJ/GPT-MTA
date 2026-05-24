@@ -1,0 +1,280 @@
+//@version=6
+indicator("MTA v8 - Setup Waiting State", overlay = true, max_labels_count = 500, max_boxes_count = 50, max_lines_count = 100)
+
+leftBars = input.int(6, "左ピボット本数", minval = 1)
+rightBars = input.int(6, "右ピボット本数", minval = 1)
+
+showPivotLabels = input.bool(true, "H/L・HH/LLラベルを表示")
+showMtaZones = input.bool(true, "MTAゾーンを表示")
+showPairLines = input.bool(true, "MTA対応高値安値ラインを表示")
+useTouchAlerts = input.bool(true, "MTAゾーン接触アラートを有効化")
+showSetupLabels = input.bool(true, "セットアップ待ちラベルを表示")
+
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow = ta.pivotlow(low, leftBars, rightBars)
+
+isPivotHigh = not na(pivotHigh)
+isPivotLow = not na(pivotLow)
+
+pivotBar = bar_index - rightBars
+
+bodyHighBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyHigh = math.max(open[i], close[i])
+        if bodyHigh > targetPrice
+            result := true
+    result
+
+bodyLowBreak(targetPrice) =>
+    bool result = false
+    for i = 0 to rightBars - 1
+        bodyLow = math.min(open[i], close[i])
+        if bodyLow < targetPrice
+            result := true
+    result
+
+mtaBodyHighMax(mtaBar) =>
+    float result = na
+    int barsBack = bar_index - mtaBar
+    for i = 0 to barsBack
+        bodyHigh = math.max(open[i], close[i])
+        result := na(result) ? bodyHigh : math.max(result, bodyHigh)
+    result
+
+mtaBodyLowMin(mtaBar) =>
+    float result = na
+    int barsBack = bar_index - mtaBar
+    for i = 0 to barsBack
+        bodyLow = math.min(open[i], close[i])
+        result := na(result) ? bodyLow : math.min(result, bodyLow)
+    result
+
+var int lastType = 0
+var float lastPrice = na
+var int lastBar = na
+var label lastLabel = na
+
+var float prevHighPrice = na
+var float prevLowPrice = na
+
+var float lastHighWickPrice = na
+var int lastHighBar = na
+
+var float lastLowWickPrice = na
+var int lastLowBar = na
+
+var float currentHighRef = na
+var float currentLowRef = na
+
+var int trendState = 0
+
+var float pushLowMtaPrice = na
+var float returnHighMtaPrice = na
+
+var box pushLowMtaZone = na
+var box returnHighMtaZone = na
+
+var line pushLowPairHighLine = na
+var line returnHighPairLowLine = na
+
+var float pushLowPairHighPrice = na
+var float returnHighPairLowPrice = na
+
+var bool longSetupActive = false
+var bool shortSetupActive = false
+var label setupLabel = na
+
+confirmedBodyHigh = math.max(open[1], close[1])
+confirmedBodyLow = math.min(open[1], close[1])
+confirmedHigh = high[1]
+confirmedLow = low[1]
+
+if trendState == 1 and not na(pushLowPairHighPrice) and confirmedBodyHigh > pushLowPairHighPrice and confirmedHigh > pushLowPairHighPrice
+    pushLowPairHighPrice := confirmedHigh
+    if not na(pushLowPairHighLine)
+        line.set_y1(pushLowPairHighLine, pushLowPairHighPrice)
+        line.set_y2(pushLowPairHighLine, pushLowPairHighPrice)
+    if not na(lastLowWickPrice)
+        pushLowMtaPrice := lastLowWickPrice
+        float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+        if not na(pushLowMtaZone)
+            box.delete(pushLowMtaZone)
+        if showMtaZones
+            pushLowMtaZone := box.new(lastLowBar, zoneBodyLow, bar_index, lastLowWickPrice, extend = extend.right, bgcolor = color.new(color.lime, 85), border_color = color.lime)
+
+if trendState == -1 and not na(returnHighPairLowPrice) and confirmedBodyLow < returnHighPairLowPrice and confirmedLow < returnHighPairLowPrice
+    returnHighPairLowPrice := confirmedLow
+    if not na(returnHighPairLowLine)
+        line.set_y1(returnHighPairLowLine, returnHighPairLowPrice)
+        line.set_y2(returnHighPairLowLine, returnHighPairLowPrice)
+    if not na(lastHighWickPrice)
+        returnHighMtaPrice := lastHighWickPrice
+        float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+        if not na(returnHighMtaZone)
+            box.delete(returnHighMtaZone)
+        if showMtaZones
+            returnHighMtaZone := box.new(lastHighBar, lastHighWickPrice, bar_index, zoneBodyHigh, extend = extend.right, bgcolor = color.new(color.aqua, 85), border_color = color.aqua)
+
+if trendState == -1 and not na(returnHighMtaPrice) and close > returnHighMtaPrice
+    trendState := 1
+    returnHighMtaPrice := na
+    returnHighPairLowPrice := na
+    longSetupActive := false
+    shortSetupActive := false
+    if not na(returnHighMtaZone)
+        box.delete(returnHighMtaZone)
+    if not na(returnHighPairLowLine)
+        line.delete(returnHighPairLowLine)
+    if not na(setupLabel)
+        label.delete(setupLabel)
+    returnHighMtaZone := na
+    returnHighPairLowLine := na
+    setupLabel := na
+
+if trendState == 1 and not na(pushLowMtaPrice) and close < pushLowMtaPrice
+    trendState := -1
+    pushLowMtaPrice := na
+    pushLowPairHighPrice := na
+    longSetupActive := false
+    shortSetupActive := false
+    if not na(pushLowMtaZone)
+        box.delete(pushLowMtaZone)
+    if not na(pushLowPairHighLine)
+        line.delete(pushLowPairHighLine)
+    if not na(setupLabel)
+        label.delete(setupLabel)
+    pushLowMtaZone := na
+    pushLowPairHighLine := na
+    setupLabel := na
+
+if isPivotHigh
+    if lastType == 1
+        if pivotHigh > lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+            bool isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef)
+            string labelText = isHH ? "HH" : "H"
+            color labelColor = isHH ? color.orange : color.red
+            lastPrice := pivotHigh
+            lastBar := pivotBar
+            lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_down, textcolor = color.white, color = labelColor, size = size.small) : na
+            if isHH and trendState != -1 and na(pushLowMtaPrice) and not na(lastLowWickPrice)
+                trendState := 1
+                pushLowMtaPrice := lastLowWickPrice
+                pushLowPairHighPrice := pivotHigh
+                float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+                if not na(pushLowMtaZone)
+                    box.delete(pushLowMtaZone)
+                if not na(pushLowPairHighLine)
+                    line.delete(pushLowPairHighLine)
+                if showMtaZones
+                    pushLowMtaZone := box.new(lastLowBar, zoneBodyLow, bar_index, lastLowWickPrice, extend = extend.right, bgcolor = color.new(color.lime, 85), border_color = color.lime)
+                if showPairLines
+                    pushLowPairHighLine := line.new(lastBar, pushLowPairHighPrice, bar_index, pushLowPairHighPrice, extend = extend.right, color = color.orange, width = 2)
+            prevHighPrice := pivotHigh
+            lastHighWickPrice := pivotHigh
+            lastHighBar := pivotBar
+    else
+        currentHighRef := prevHighPrice
+        bool isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef)
+        string labelText = isHH ? "HH" : "H"
+        color labelColor = isHH ? color.orange : color.red
+        lastType := 1
+        lastPrice := pivotHigh
+        lastBar := pivotBar
+        lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_down, textcolor = color.white, color = labelColor, size = size.small) : na
+        if isHH and trendState != -1 and na(pushLowMtaPrice) and not na(lastLowWickPrice)
+            trendState := 1
+            pushLowMtaPrice := lastLowWickPrice
+            pushLowPairHighPrice := pivotHigh
+            float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+            if not na(pushLowMtaZone)
+                box.delete(pushLowMtaZone)
+            if not na(pushLowPairHighLine)
+                line.delete(pushLowPairHighLine)
+            if showMtaZones
+                pushLowMtaZone := box.new(lastLowBar, zoneBodyLow, bar_index, lastLowWickPrice, extend = extend.right, bgcolor = color.new(color.lime, 85), border_color = color.lime)
+            if showPairLines
+                pushLowPairHighLine := line.new(lastBar, pushLowPairHighPrice, bar_index, pushLowPairHighPrice, extend = extend.right, color = color.orange, width = 2)
+        prevHighPrice := pivotHigh
+        lastHighWickPrice := pivotHigh
+        lastHighBar := pivotBar
+
+if isPivotLow
+    if lastType == -1
+        if pivotLow < lastPrice
+            if not na(lastLabel)
+                label.delete(lastLabel)
+            bool isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef)
+            string labelText = isLL ? "LL" : "L"
+            color labelColor = isLL ? color.blue : color.lime
+            lastPrice := pivotLow
+            lastBar := pivotBar
+            lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_up, textcolor = color.white, color = labelColor, size = size.small) : na
+            if isLL and trendState != 1 and na(returnHighMtaPrice) and not na(lastHighWickPrice)
+                trendState := -1
+                returnHighMtaPrice := lastHighWickPrice
+                returnHighPairLowPrice := pivotLow
+                float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+                if not na(returnHighMtaZone)
+                    box.delete(returnHighMtaZone)
+                if not na(returnHighPairLowLine)
+                    line.delete(returnHighPairLowLine)
+                if showMtaZones
+                    returnHighMtaZone := box.new(lastHighBar, lastHighWickPrice, bar_index, zoneBodyHigh, extend = extend.right, bgcolor = color.new(color.aqua, 85), border_color = color.aqua)
+                if showPairLines
+                    returnHighPairLowLine := line.new(lastBar, returnHighPairLowPrice, bar_index, returnHighPairLowPrice, extend = extend.right, color = color.red, width = 2)
+            prevLowPrice := pivotLow
+            lastLowWickPrice := pivotLow
+            lastLowBar := pivotBar
+    else
+        currentLowRef := prevLowPrice
+        bool isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef)
+        string labelText = isLL ? "LL" : "L"
+        color labelColor = isLL ? color.blue : color.lime
+        lastType := -1
+        lastPrice := pivotLow
+        lastBar := pivotBar
+        lastLabel := showPivotLabels ? label.new(lastBar, lastPrice, labelText, style = label.style_label_up, textcolor = color.white, color = labelColor, size = size.small) : na
+        if isLL and trendState != 1 and na(returnHighMtaPrice) and not na(lastHighWickPrice)
+            trendState := -1
+            returnHighMtaPrice := lastHighWickPrice
+            returnHighPairLowPrice := pivotLow
+            float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+            if not na(returnHighMtaZone)
+                box.delete(returnHighMtaZone)
+            if not na(returnHighPairLowLine)
+                line.delete(returnHighPairLowLine)
+            if showMtaZones
+                returnHighMtaZone := box.new(lastHighBar, lastHighWickPrice, bar_index, zoneBodyHigh, extend = extend.right, bgcolor = color.new(color.aqua, 85), border_color = color.aqua)
+            if showPairLines
+                returnHighPairLowLine := line.new(lastBar, returnHighPairLowPrice, bar_index, returnHighPairLowPrice, extend = extend.right, color = color.red, width = 2)
+        prevLowPrice := pivotLow
+        lastLowWickPrice := pivotLow
+        lastLowBar := pivotBar
+
+bullZoneTouch = useTouchAlerts and trendState == 1 and not na(pushLowMtaZone) and low <= box.get_top(pushLowMtaZone) and high >= box.get_bottom(pushLowMtaZone)
+bearZoneTouch = useTouchAlerts and trendState == -1 and not na(returnHighMtaZone) and high >= box.get_bottom(returnHighMtaZone) and low <= box.get_top(returnHighMtaZone)
+
+bullZoneTouchOnce = bullZoneTouch and not bullZoneTouch[1]
+bearZoneTouchOnce = bearZoneTouch and not bearZoneTouch[1]
+
+if bullZoneTouchOnce
+    longSetupActive := true
+    shortSetupActive := false
+    if not na(setupLabel)
+        label.delete(setupLabel)
+    if showSetupLabels
+        setupLabel := label.new(bar_index, low, "Long Setup\nTrigger待ち", style = label.style_label_up, textcolor = color.white, color = color.green, size = size.small)
+
+if bearZoneTouchOnce
+    shortSetupActive := true
+    longSetupActive := false
+    if not na(setupLabel)
+        label.delete(setupLabel)
+    if showSetupLabels
+        setupLabel := label.new(bar_index, high, "Short Setup\nTrigger待ち", style = label.style_label_down, textcolor = color.white, color = color.red, size = size.small)
+
+alertcondition(bullZoneTouchOnce, title = "押し安値MTAゾーン接触", message = "押し安値MTAゾーンに価格が初回接触しました")
+alertcondition(bearZoneTouchOnce, title = "戻り高値MTAゾーン接触", message = "戻り高値MTAゾーンに価格が初回接触しました")
